@@ -129,10 +129,14 @@ def register_user(
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute(
-        "SELECT user_id FROM users WHERE email=?",
-        (email,)
-    )
+    try:
+        cur.execute(
+            "SELECT user_id FROM users WHERE email=?",
+            (email,)
+        )
+    except Exception as e:
+        print(e)
+        raise
 
     if cur.fetchone():
 
