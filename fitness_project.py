@@ -193,6 +193,23 @@ activity_level = {
     "Heavy": 1.725
 }[activity]
 
+# ---------- DATABASE USER ----------
+
+# One "user" row per browser session — created once, reused across reruns so
+# sidebar tweaks don't spawn a new row every time Streamlit reruns the script.
+if "user_id" not in st.session_state:
+
+    st.session_state.user_id = db.create_user(
+        age=age,
+        gender=gender,
+        height=height,
+        weight=weight,
+        goal=goal,
+        activity_level=activity
+    )
+
+user_id = st.session_state.user_id
+
 # ---------- CALCULATIONS ----------
 
 bmi = calculate_bmi(
@@ -274,6 +291,7 @@ if st.button("Generate Workout", disabled=blocked):
     workout = ask_gemini(prompt)
 
     st.session_state["workout"] = workout
+    db.save_plan(user_id, "workout", workout)
 
     st.write(workout)
 
@@ -293,6 +311,7 @@ if st.button("Generate Meal Plan", disabled=blocked):
     meal = ask_gemini(prompt)
 
     st.session_state["meal"] = meal
+    db.save_plan(user_id, "meal", meal)
 
     st.write(meal)
 
@@ -338,6 +357,7 @@ if user_message:
             "content": user_message
         }
     )
+    db.log_chat(user_id, "user", user_message)
 
     reply = ask_gemini(user_message)
 
@@ -347,6 +367,7 @@ if user_message:
             "content": reply
         }
     )
+    db.log_chat(user_id, "assistant", reply)
 
 for msg in st.session_state.messages:
 
@@ -357,24 +378,18 @@ for msg in st.session_state.messages:
 
 st.subheader("📈 Weight Tracking")
 
-if "weight_history" not in st.session_state:
-    st.session_state.weight_history = []
-
 if st.button("Save Current Weight"):
+    db.log_weight(user_id, weight)
+    st.success(f"Saved {weight} kg to database.")
 
-    st.session_state.weight_history.append(
-        weight
-    )
+weight_rows = db.get_weight_history(user_id)
 
-if len(st.session_state.weight_history) > 0:
+if len(weight_rows) > 0:
 
-    df = pd.DataFrame(
-        {
-            "Weight": st.session_state.weight_history
-        }
-    )
+    df = pd.DataFrame(weight_rows, columns=["Weight", "Logged At"])
 
-    st.line_chart(df)
+    st.line_chart(df.set_index("Logged At")["Weight"])
+    st.dataframe(df, use_container_width=True)
 
 # ---------- PDF DOWNLOAD ----------
 
