@@ -240,7 +240,7 @@ foods = [
         "img": "https://images.unsplash.com/photo-1516684732162-798a0062be99"
     },
     {
-        "name": "Eggs",
+        "name": "Healthy Pancakes",
         "img": "https://images.unsplash.com/photo-1506084868230-bb9d95c24759"
     },
     {
