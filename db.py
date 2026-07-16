@@ -7,7 +7,7 @@ import sqlite3
 import hashlib
 from datetime import datetime
 
-DB_NAME = "fitbot.db"
+DB_NAME = "fitbot_v2.db"
 
 
 def get_connection():
