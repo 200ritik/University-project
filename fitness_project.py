@@ -12,6 +12,10 @@
 # !pip install reportlab
 # !pip install platypus
 
+import os
+import tempfile
+from datetime import datetime
+
 import db
 import streamlit as st
 import pandas as pd
@@ -19,9 +23,6 @@ from google import genai
 from google.genai import types
 from reportlab.platypus import SimpleDocTemplate, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
-import tempfile
-
-import os
 
 api_key = os.getenv("GEMINI_API_KEY")
 
