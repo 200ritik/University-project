@@ -278,15 +278,39 @@ for i, food in enumerate(foods):
 
 st.subheader("🏋️ AI Workout Plan")
 
+previous_workout = db.get_latest_plan(user_id, "workout")
+
+if previous_workout:
+
+    with st.expander("📋 Previous Workout Plan"):
+
+        st.write(previous_workout)
+
 if st.button("Generate Workout", disabled=blocked):
 
     prompt = f"""
-    Age: {age}
-    Weight: {weight}
-    Goal: {goal}
+    You are a certified fitness trainer.
 
-    Create a workout plan.
-    """
+    Age: {age}
+    Gender: {gender}
+    Weight: {weight} kg
+    Height: {height} cm
+    BMI: {bmi}
+    Goal: {goal}
+    Activity Level: {activity}
+
+    Create a detailed 7-day workout plan.
+
+    Include:
+    - Warm-up
+    - Main exercises
+    - Sets
+    - Reps
+    - Rest time
+    - Cardio
+    - Cool-down
+    - Safety tips
+    """"
 
     workout = ask_gemini(prompt)
 
@@ -299,13 +323,46 @@ if st.button("Generate Workout", disabled=blocked):
 
 st.subheader("🍽️ AI Meal Plan")
 
+previous_meal = db.get_latest_plan(user_id, "meal")
+
+if previous_meal:
+
+    with st.expander("🍽️ Previous Meal Plan"):
+
+        st.write(previous_meal)
+
 if st.button("Generate Meal Plan", disabled=blocked):
 
     prompt = f"""
-    Calories: {calories}
+    You are a professional Indian nutritionist.
+
+    Age: {age}
+    Gender: {gender}
+    Weight: {weight}
+    Height: {height}
+    BMI: {bmi}
+    Calories Required: {calories}
     Goal: {goal}
 
-    Create a one-day Indian meal plan.
+    Generate a healthy one-day Indian meal plan.
+
+    Include:
+
+    Breakfast
+
+    Morning Snack
+
+    Lunch
+
+    Evening Snack
+
+    Dinner
+
+    Approximate calories for each meal.
+
+    Protein, carbs and fats.
+
+    Water recommendation.
     """
 
     meal = ask_gemini(prompt)
@@ -320,8 +377,19 @@ if st.button("Generate Meal Plan", disabled=blocked):
 st.subheader("💬 AI Fitness Coach")
 
 if "messages" not in st.session_state:
+
+    history = db.get_chat_history(user_id)
+
     st.session_state.messages = []
 
+    for role, message in history:
+
+        st.session_state.messages.append(
+            {
+                "role": role,
+                "content": message
+            }
+        )
 # Voice input — records in-browser, transcribes via Gemini, then feeds the
 # chat pipeline exactly like typed text would.
 st.caption("🎙️ Ask by voice, or type below")
@@ -393,22 +461,91 @@ if len(weight_rows) > 0:
 
 # ---------- PDF DOWNLOAD ----------
 
-st.subheader("📄 Download Report")
+st.subheader("📄 Download Fitness Report")
+
+# BMI Status
+if bmi < 18.5:
+    bmi_status = "Underweight"
+elif bmi < 25:
+    bmi_status = "Healthy"
+elif bmi < 30:
+    bmi_status = "Overweight"
+else:
+    bmi_status = "Obese"
+
+# Chat History
+chat_history = ""
+
+for msg in st.session_state.messages:
+    chat_history += f"{msg['role'].capitalize()}: {msg['content']}\n\n"
+
+# Weight History
+weight_history = ""
+
+history = db.get_weight_history(user_id)
+
+for w, d in history:
+    weight_history += f"{d[:10]} : {w} kg\n"
 
 report = f"""
-BMI: {bmi}
+==============================
+      AI FITNESS REPORT
+==============================
 
-Calories: {calories}
+Report Generated:
+{datetime.now().strftime("%d-%m-%Y %I:%M %p")}
 
-Water Intake: {water}
+---------------------------------
+USER DETAILS
+---------------------------------
 
-Goal: {goal}
+Age           : {age}
+Gender        : {gender}
+Height        : {height} cm
+Weight        : {weight} kg
 
-Workout:
-{st.session_state.get('workout', '')}
+Goal          : {goal}
+Activity      : {activity}
 
-Meal:
-{st.session_state.get('meal', '')}
+---------------------------------
+HEALTH SUMMARY
+---------------------------------
+
+BMI           : {bmi}
+BMI Status    : {bmi_status}
+
+Calories      : {calories} kcal/day
+
+Water Intake  : {water} Litres/day
+
+---------------------------------
+AI WORKOUT PLAN
+---------------------------------
+
+{st.session_state.get("workout","Not Generated")}
+
+---------------------------------
+AI MEAL PLAN
+---------------------------------
+
+{st.session_state.get("meal","Not Generated")}
+
+---------------------------------
+WEIGHT HISTORY
+---------------------------------
+
+{weight_history}
+
+---------------------------------
+CHAT HISTORY
+---------------------------------
+
+{chat_history}
+
+=================================
+Thank you for using
+AI Fitness Coach ❤️
+=================================
 """
 
 pdf_file = create_pdf(report)
@@ -416,8 +553,8 @@ pdf_file = create_pdf(report)
 with open(pdf_file, "rb") as file:
 
     st.download_button(
-        "Download PDF",
-        file,
-        file_name="fitness_report.pdf",
+        "📥 Download Fitness Report",
+        data=file,
+        file_name="AI_Fitness_Report.pdf",
         mime="application/pdf"
     )
