@@ -310,7 +310,7 @@ if st.button("Generate Workout", disabled=blocked):
     - Cardio
     - Cool-down
     - Safety tips
-    """"
+    """
 
     workout = ask_gemini(prompt)
 
