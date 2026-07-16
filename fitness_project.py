@@ -12,6 +12,7 @@
 # !pip install reportlab
 # !pip install platypus
 
+import db
 import streamlit as st
 import pandas as pd
 from google import genai
@@ -27,6 +28,8 @@ api_key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(
     api_key=api_key
 )
+
+db.init_db()
 
 def calculate_bmi(weight, height):
     height_m = height / 100
