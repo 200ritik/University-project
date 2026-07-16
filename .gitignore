@@ -1,0 +1,4 @@
+fitbot.db
+*.db
+__pycache__/
+*.pyc
