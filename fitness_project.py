@@ -31,7 +31,162 @@ client = genai.Client(
 )
 
 db.init_db()
+# -------------------------------
+# LOGIN SESSION
+# -------------------------------
 
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if "user_id" not in st.session_state:
+    st.session_state.user_id = None
+
+# -------------------------------
+# LOGIN / REGISTER
+# -------------------------------
+
+if not st.session_state.logged_in:
+
+    st.title("🏋 AI Fitness Coach")
+
+    page = st.radio(
+        "Choose",
+        [
+            "Login",
+            "Register"
+        ]
+    )
+
+    if page == "Login":
+
+        email = st.text_input("Email")
+
+        password = st.text_input(
+            "Password",
+            type="password"
+        )
+
+        if st.button("Login"):
+
+            user = db.login_user(
+                email,
+                password
+            )
+
+            if user:
+
+                st.session_state.logged_in = True
+                st.session_state.user_id = user
+
+                st.success("Login Successful")
+
+                st.rerun()
+
+            else:
+
+                st.error("Invalid Email or Password")
+
+    else:
+
+        name = st.text_input("Full Name")
+
+        email = st.text_input("Email")
+
+        password = st.text_input(
+            "Password",
+            type="password"
+        )
+
+        age = st.number_input(
+            "Age",
+            16,
+            80,
+            22
+        )
+
+        gender = st.selectbox(
+            "Gender",
+            [
+                "Male",
+                "Female"
+            ]
+        )
+
+        height = st.number_input(
+            "Height",
+            120.0,
+            220.0,
+            170.0
+        )
+
+        weight = st.number_input(
+            "Weight",
+            30.0,
+            200.0,
+            70.0
+        )
+
+        goal = st.selectbox(
+            "Goal",
+            [
+                "Fat Loss",
+                "Maintenance",
+                "Muscle Gain"
+            ]
+        )
+
+        activity = st.selectbox(
+            "Activity",
+            [
+                "Sedentary",
+                "Light",
+                "Moderate",
+                "Heavy"
+            ]
+        )
+
+        if st.button("Register"):
+
+            user = db.register_user(
+                name,
+                email,
+                password,
+                age,
+                gender,
+                height,
+                weight,
+                goal,
+                activity
+            )
+
+            if user:
+
+                st.success(
+                    "Registration Successful. Please Login."
+                )
+
+            else:
+
+                st.error(
+                    "Email already exists."
+                )
+
+    st.stop()
+
+user_id = st.session_state.user_id
+
+# Load previous AI plans
+st.session_state["workout"] = (
+    db.get_latest_plan(user_id, "workout") or ""
+)
+
+st.session_state["meal"] = (
+    db.get_latest_plan(user_id, "meal") or ""
+)
+
+def calculate_bmi(weight, height):
+    height_m = height / 100
+    return round(weight / (height_m ** 2), 2)
 def calculate_bmi(weight, height):
     height_m = height / 100
     return round(weight / (height_m ** 2), 2)
@@ -148,45 +303,73 @@ st.title("🏋️ AI Fitness Coach")
 
 st.sidebar.header("User Profile")
 
+if st.sidebar.button("Logout"):
+
+    st.session_state.logged_in = False
+
+    st.session_state.user_id = None
+
+    st.rerun()
+
+# Load user details
+user = db.get_user(user_id)
+
+name = user[1]
+email = user[2]
+
+default_age = user[4] if user[4] else 22
+default_gender = user[5] if user[5] else "Male"
+default_height = user[6] if user[6] else 170
+default_weight = user[7] if user[7] else 70
+default_goal = user[8] if user[8] else "Maintenance"
+default_activity = user[9] if user[9] else "Moderate"
+
+st.sidebar.write(f"Welcome, **{name}**")
+
 age = st.sidebar.number_input(
     "Age",
     16,
     80,
-    22
+    value=int(default_age)
 )
 
 gender = st.sidebar.selectbox(
     "Gender",
-    ["Male", "Female"]
+    ["Male", "Female"],
+    index=0 if default_gender == "Male" else 1
 )
+
 
 weight = st.sidebar.number_input(
     "Weight (kg)",
     30.0,
     200.0,
-    70.0
+    value=float(default_weight)
 )
 
 height = st.sidebar.number_input(
     "Height (cm)",
     120.0,
     220.0,
-    170.0
+    value=float(default_height)
 )
+
+goals = ["Fat Loss", "Maintenance", "Muscle Gain"]
 
 goal = st.sidebar.selectbox(
     "Goal",
-    [
-        "Fat Loss",
-        "Maintenance",
-        "Muscle Gain"
-    ]
+    goals,
+    index=goals.index(default_goal)
 )
+
+activities = ["Sedentary", "Light", "Moderate", "Heavy"]
 
 activity = st.sidebar.selectbox(
     "Activity Level",
-    ["Sedentary", "Light", "Moderate", "Heavy"]
+    activities,
+    index=activities.index(default_activity)
 )
+
 activity_level = {
     "Sedentary": 1.2,
     "Light": 1.375,
@@ -194,22 +377,17 @@ activity_level = {
     "Heavy": 1.725
 }[activity]
 
-# ---------- DATABASE USER ----------
+db.update_profile(
+    user_id,
+    age,
+    gender,
+    height,
+    weight,
+    goal,
+    activity
+)
 
-# One "user" row per browser session — created once, reused across reruns so
-# sidebar tweaks don't spawn a new row every time Streamlit reruns the script.
-if "user_id" not in st.session_state:
 
-    st.session_state.user_id = db.create_user(
-        age=age,
-        gender=gender,
-        height=height,
-        weight=weight,
-        goal=goal,
-        activity_level=activity
-    )
-
-user_id = st.session_state.user_id
 
 # ---------- CALCULATIONS ----------
 
