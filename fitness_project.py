@@ -12,11 +12,10 @@
 # !pip install reportlab
 # !pip install platypus
 
-
-
 import streamlit as st
 import pandas as pd
 from google import genai
+from google.genai import types
 from reportlab.platypus import SimpleDocTemplate, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
 import tempfile
@@ -24,11 +23,11 @@ import tempfile
 import os
 
 api_key = os.getenv("GEMINI_API_KEY")
-from google import genai
 
 client = genai.Client(
     api_key=api_key
 )
+
 def calculate_bmi(weight, height):
     height_m = height / 100
     return round(weight / (height_m ** 2), 2)
@@ -51,6 +50,20 @@ def ask_gemini(prompt):
     )
     return response.text
 
+def transcribe_audio(audio_bytes):
+    """Send recorded audio straight to Gemini (multimodal) and get back plain text.
+    Avoids extra deps like speech_recognition/pyaudio which don't play well on
+    Streamlit Cloud."""
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[
+            types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav"),
+            "Transcribe this audio to plain text. Return ONLY the transcription, "
+            "no preamble, no quotes."
+        ]
+    )
+    return response.text.strip()
+
 def create_pdf(content):
     temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
     doc = SimpleDocTemplate(temp.name)
@@ -64,6 +77,60 @@ def create_pdf(content):
     doc.build(story)
 
     return temp.name
+
+# ---------- VALIDATION ----------
+
+# WHO adult BMI bands. Anything outside plausible human ranges also gets flagged
+# so garbage inputs (e.g. weight=25 for an adult) don't silently produce a plan.
+MIN_PLAUSIBLE_ADULT_WEIGHT = 35  # kg, rough floor for anyone above pediatric age
+SEVERE_UNDERWEIGHT_BMI = 16.0
+UNDERWEIGHT_BMI = 18.5
+OVERWEIGHT_BMI = 25.0
+OBESE_BMI = 30.0
+
+def validate_profile(age, weight, height, goal, bmi):
+    """Returns (errors, warnings).
+    errors  -> hard stop, don't generate a plan (implausible / unsafe combo)
+    warnings -> show but allow user to proceed if they explicitly acknowledge
+    """
+    errors = []
+    warnings = []
+
+    if age < 18 and weight < 30:
+        errors.append(
+            "This weight/age combination is outside what this tool is built to "
+            "handle safely. Please consult a pediatrician or doctor instead."
+        )
+
+    if age >= 18 and weight < MIN_PLAUSIBLE_ADULT_WEIGHT:
+        errors.append(
+            f"{weight} kg is not a plausible weight for an adult of age {age}. "
+            "Please double-check the value you entered."
+        )
+
+    if bmi < SEVERE_UNDERWEIGHT_BMI:
+        errors.append(
+            f"A BMI of {bmi} falls into the severely underweight range. This app "
+            "will not generate a weight-loss plan at this BMI — please speak to a "
+            "doctor or dietitian first."
+        )
+        if goal == "Fat Loss":
+            errors.append("Fat Loss is not offered as a goal at this BMI.")
+    elif bmi < UNDERWEIGHT_BMI and goal == "Fat Loss":
+        warnings.append(
+            f"BMI is {bmi}, which is in the underweight range. Weight loss isn't "
+            "recommended here — consider switching the goal to Maintenance or "
+            "Muscle Gain."
+        )
+
+    if bmi >= OBESE_BMI and goal == "Muscle Gain":
+        warnings.append(
+            f"BMI is {bmi} (obese range). A lean bulk / Muscle Gain plan may not "
+            "be the best fit right now — Fat Loss or Maintenance is usually "
+            "recommended first. Talk to a doctor if unsure."
+        )
+
+    return errors, warnings
 
 # streamlit
 st.set_page_config(
@@ -148,6 +215,21 @@ col1.metric("BMI", bmi)
 col2.metric("Water Intake", f"{water} L")
 col3.metric("Calories", calories)
 
+# ---------- VALIDATION CHECK ----------
+
+errors, warnings = validate_profile(age, weight, height, goal, bmi)
+
+for e in errors:
+    st.error(f"⛔ {e}")
+
+for w in warnings:
+    st.warning(f"⚠️ {w}")
+
+blocked = len(errors) > 0
+
+if blocked:
+    st.info("Fix the inputs above to unlock workout/meal plan generation.")
+
 # ---------- FOODS ----------
 
 st.subheader("🍛 Suggested Foods")
@@ -176,7 +258,7 @@ for i, food in enumerate(foods):
 
 st.subheader("🏋️ AI Workout Plan")
 
-if st.button("Generate Workout"):
+if st.button("Generate Workout", disabled=blocked):
 
     prompt = f"""
     Age: {age}
@@ -196,7 +278,7 @@ if st.button("Generate Workout"):
 
 st.subheader("🍽️ AI Meal Plan")
 
-if st.button("Generate Meal Plan"):
+if st.button("Generate Meal Plan", disabled=blocked):
 
     prompt = f"""
     Calories: {calories}
@@ -218,9 +300,32 @@ st.subheader("💬 AI Fitness Coach")
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-user_message = st.chat_input(
+# Voice input — records in-browser, transcribes via Gemini, then feeds the
+# chat pipeline exactly like typed text would.
+st.caption("🎙️ Ask by voice, or type below")
+audio_value = st.audio_input("Record a question")
+
+voice_message = None
+if audio_value is not None:
+    # Only transcribe once per new recording
+    audio_bytes = audio_value.getvalue()
+    audio_hash = hash(audio_bytes)
+    if st.session_state.get("last_audio_hash") != audio_hash:
+        with st.spinner("Transcribing..."):
+            try:
+                voice_message = transcribe_audio(audio_bytes)
+                st.session_state["last_audio_hash"] = audio_hash
+            except Exception as e:
+                st.error(f"Couldn't transcribe audio: {e}")
+
+if voice_message:
+    st.caption(f"Heard: \"{voice_message}\"")
+
+typed_message = st.chat_input(
     "Ask a fitness question..."
 )
+
+user_message = typed_message or voice_message
 
 if user_message:
 
@@ -298,6 +403,3 @@ with open(pdf_file, "rb") as file:
         file_name="fitness_report.pdf",
         mime="application/pdf"
     )
-
-
-
